@@ -3,9 +3,11 @@ from utils.visualize.logger import instance_log
 from config import *
 import numpy as np
 import tensorflow as tf
+tf.compat.v1.disable_v2_behavior()
+tf.compat.v1.disable_eager_execution()
 import random
 from model import *
-
+import sys
 
 class Trainer(object):
 
@@ -43,6 +45,10 @@ class Trainer(object):
                        optimizer=optimizer, tau=self.TAU, name="dqn_pms_{}".format(exp_idx), layers=args.hid_dims,
                        is_train=args.is_train, is_duel = args.is_duel,
                        global_step=global_step, summary_dir=self.summary_dir, weight_hist=use_hist)
+        # self.nn = PolicyModel(input_dims = args.state_dim, input_dim_str='1', # original paper applies 2x1 conv on 2xs state
+        #                          hidden_dims = args.hid_dims, action_dim=args.action_dim,
+        #                          GAMMA=args.GAMMA, ALPHA=args.lr,
+        #                          )
         self.use_buff = use_buff
         if args.is_train:
             self.record = instance_log(args.gantt_dir, 'instances_{}'.format(args.timestamp))
@@ -80,14 +86,17 @@ class Trainer(object):
         print('memory use:', memoryUse)
 
     def getSummary(self):
-        return self.nn.getSummary()
+        if isinstance(self.nn, PDQN):
+            return self.nn.getSummary()
+        else:
+            return False
 
     def writeSummary(self):
         summ = self.getSummary()
         if summ is False:
             print("There is no summary writer")
             return
-        episode_summary = tf.Summary()
+        episode_summary = tf.compat.v1.Summary()
         episode_summary.value.add(simple_value=self.reward_total, node_name='reward/cumulative_reward', tag='reward/cumulative_reward')
         episode_summary.value.add(simple_value=self.cumQ, node_name='reward/cumulative_Q', tag='reward/cumulative_Q')
         L_avg = 0
@@ -98,6 +107,24 @@ class Trainer(object):
         #     episode_summary.value.add(simple_value=self.nn.loss_tf.summary.scalar('loss/batch_loss_v', tf.subtract(self.loss_end, self.loss)
         summ.add_summary(episode_summary, self.Episode)
         summ.flush()
+    def get_action_feasibility(self, observe):
+        temp = observe['state']
+        feasibility = observe['feasibility']
+        curr_time = observe['time']
+        state = np.zeros([1, len(temp)])
+        state[0] = temp
+        state = np.expand_dims(state, axis=2) # to make 3-d vector of CQ-PG style
+        prob = self.nn.get_probabilities(state)
+        # self.sess.run(self.act_probs, feed_dict={self.inputs: state})[0]
+        max_logit = -sys.maxsize
+        action = 0
+        for a in feasibility:
+            if prob[a]>=max_logit:
+                max_logit = prob[a]
+                action = a
+        observe['logits'] = prob
+        observe['max_q'] = max_logit
+        return observe, action, curr_time
 
     def get_action(self, observe):
 
@@ -121,6 +148,10 @@ class Trainer(object):
             auxin = observe['auxin']
         else:
             auxin = []
+        self.decision_cnt += 1
+        if isinstance(self.nn, PolicyModel):
+            return self.get_action_feasibility(observe)
+        """For model of DQN-type, implement Greedy policy"""
         deterministric = True
         logits =  list(self.nn.critic_predict([state],[auxin], feasibility=feasible_action_index)[0]) # numpy array predictions to list
         # print(logits)
@@ -151,7 +182,8 @@ class Trainer(object):
         # if args.use_nost and action % 10 == action // 10: action = 0
         now_value = logits[action]
         self.cumQ += float(now_value)
-        self.decision_cnt += 1
+        observe['logits'] = logits
+        observe['max_q'] = now_value
         
         return observe, action, curr_time
 
@@ -332,8 +364,14 @@ class Trainer(object):
 
             self.loss_history = np.roll(self.loss_history, 1)
             self.loss_history[0] = loss
-        elif isinstance(self.nn, CriticNetwork):
+        elif isinstance(self.nn, BaseNetwork):
             pass
+        # elif isinstance(self.nn, PolicyModel):
+        #     s_batch, xs_batch, a_batch, r_batch, t_batch, s2_batch, xs2_batch, feasible_action = self.dat.sample_sequence(recent=False, seq_size=None)
+        #     """sample_sequence append experiences sequentially until it reaches terminal state
+        #     if recent == True, only last episode is selected. if seq_size is specified, those numbers become maximum length of the buffer 
+        #     """
+        #     self.nn.learn(s_batch, a_batch, r_batch)
 
     def update_target_network(self):
         if isinstance(self.nn, PDQN):
