@@ -112,14 +112,14 @@ class ReplayBuffer(object):
             idx = (self._next_idx-1)%self.buffer_size
             batch.append(self.buffer[idx])
             while self.buffer[idx][4] is False:
-                idx = (idx - 1) % self.buffer_size
+                idx = (idx - 1) % self.count
                 batch.append(self.buffer[idx])
         else:
             idx = random.randint(0, self.count - 1)
             batch.append(self.buffer[idx])
             while self.buffer[idx][4] is False and (seq_size>1 if seq_size is not None else True):
                 if seq_size is not None: seq_size -= 1
-                idx = (idx + 1) % self.buffer_size
+                idx = (idx + 1) % self.count # not self.buffer_count
                 batch.append(self.buffer[idx])
         return self.unwrap(batch)
 
@@ -134,7 +134,7 @@ class ReplayBuffer(object):
             t_batch = np.array([_[4] for _ in batch])
             s2_batch = np.array([_[5] for _ in batch])
             xs2_batch = np.array([_[6] for _ in batch])
-            f_a_batch = np.array([_[7] for _ in batch])
+            f_a_batch = np.array([_[7] for _ in batch], dtype=object) #feasible_action_list has different length across experiences
             # a2_batch = np.array([_[5] for _ in batch])
             return s_batch, xs_batch, a_batch, r_batch, t_batch, s2_batch, xs2_batch, f_a_batch
 
