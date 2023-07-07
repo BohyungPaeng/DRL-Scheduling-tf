@@ -1,8 +1,11 @@
 import argparse, datetime, numpy, os, sys, csv, random
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
+tf.disable_eager_execution()
+
 from agent.trainer import Trainer
 from env.simul_pms import PMSSim
-from test import test_online, test_procedure, call_config_list
+from test import test_online, test_procedure, call_config_list, viz_factory
 from config import *
 from utils.util import *
 import pandas as pd
@@ -92,26 +95,34 @@ def train(idx: int, tf_config):
 
     MAX_EPISODE = 100000
 
+    """tf_config in tf2.x
+    import tensorflow as tf
+    tf.config.gpu.set_per_process_memory_fraction(0.75)
+    tf.config.gpu.set_per_process_memory_growth(True)
+    """
     with tf.Session(config=tf_config) as sess:
         FIRST_ST_TIME = datetime.datetime.now()
 
         print('Activate Neural network start ...')
         global_step = tf.Variable(0, trainable=False)
-        # global_step = tf.placeholder(tf.float32, [], name='gs')
+        # global_step = tf.Variable(tf.float32, [], name='gs')
         # lr = tf.train.exponential_decay(args.lr, global_step=global_step,
         #                                                     decay_steps=args.max_episode*25,
         #                                                     decay_rate=0.1)
         lr = args.lr
         if 'upm' in args.oopt:
-            agentObj = Trainer(sess, tf.train.GradientDescentOptimizer(lr),
+            agentObj = Trainer(sess, tf.keras.optimizers.SGD(lr),
                                global_step=global_step, use_hist=args.use_hist, exp_idx=idx)
         elif 'fab' in args.oopt:
-            agentObj = Trainer(sess, tf.train.AdamOptimizer(lr),
+            agentObj = Trainer(sess, tf.keras.optimizers.Adam(lr),
                                global_step=global_step, use_hist=args.use_hist, exp_idx=idx)
         else:
+            # agentObj = Trainer(sess, tf.keras.optimizers.RMSprop(lr, 0.99, 0.0, 1e-6),
+            #                global_step=global_step, use_hist=args.use_hist, exp_idx=idx)
             agentObj = Trainer(sess, tf.train.RMSPropOptimizer(lr, 0.99, 0.0, 1e-6),
                            global_step=global_step, use_hist=args.use_hist, exp_idx=idx)
         sess.run(tf.global_variables_initializer())
+        # tf.initialize_all_variables()
         saver = tf.train.Saver(max_to_keep=args.max_episode)
         sr = PerformanceRecord(save_dir=args.save_dir, filename='performance_{}'.format(idx), format='csv')
         if args.is_train is False:
@@ -179,7 +190,7 @@ def train(idx: int, tf_config):
             if episode % args.save_freq == 0:
                 model_dir = '{}/models/{}_{}_{:07d}/'.format(args.save_dir, str(idx), str(exp_idx), episode)
                 save(sess, model_dir, saver)
-                agentObj.record.fileWrite(episode)
+                # agentObj.record.fileWrite(episode)
                 perform_summary = tf.Summary()
                 perform_summary.value.add(simple_value=sr.best, node_name="reward/train_bestR",tag="reward/train_bestR")
                 if len(valid_seed_list) == 0: # single test
@@ -201,6 +212,10 @@ def train(idx: int, tf_config):
                     for valid_seed in valid_seed_list:
                         env.set_random_seed(valid_seed)
                         reward_valid = test_online(agentObj=agentObj, env=env, episode=episode, showFlag=False)
+                        if valid_seed % 30 == 0:
+                            agentObj.record.fileWrite(episode)
+                            agentObj.record.ganttWrite(
+                                img_path='{}/env{}_{:07d}.png'.format(args.gantt_dir, str(idx), episode))
                         reward_avg.append(reward_valid)
                         sr.update_best('valid{}'.format(valid_seed), reward_valid)
                         if episode + args.save_freq * 10 >= args.max_episode: sr.update_best(
@@ -213,6 +228,7 @@ def train(idx: int, tf_config):
                     print('Validation result : ', reward_avg)
                     perform_summary.value.add(simple_value=reward_avg, node_name="reward/valid_avgR", tag="reward/valid_avgR")
                     perform_summary.value.add(simple_value=best_avg, node_name="reward/valid_bestR", tag="reward/valid_bestR")
+                    viz_factory()
 
                 if agentObj.getSummary(): agentObj.getSummary().add_summary(perform_summary, episode)
                 print('Best Validation result : ', sr.best_dict)
@@ -235,6 +251,7 @@ def train(idx: int, tf_config):
     print("Total elapsed time: {}\t hour: {} sec ".format(MAX_EPISODE, total_training_time))
 
 if __name__ == "__main__":
+    import tensorflow.compat.v1 as tf
     gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.333, allow_growth=True)
     config = tf.ConfigProto(device_count={'GPU': 0}, gpu_options=gpu_options)
     if args.is_train:
