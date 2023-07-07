@@ -507,7 +507,7 @@ class PMSSim(object):
             self.record.appendInfo('job_due', due)
             dec = log_decision(self.decision_number, jobId, incoming_job.type, due,
                                self.recent_job.mac, self.recent_job.type, start_time,
-                               incoming_job.st, incoming_job.pt, reward)
+                               incoming_job.st, incoming_job.pt, reward, job_arrival=self.recent_job.arrival)
             # dec = DecisionObject(decisionId=self.decision_number, decisionTime=self.wall_time.curr_time
             #                      ,decisionType="pms", decision="{}_{}".format(self.recent_job.mac, jobId)
             #                      ,lotId=jobId, lotSize=incoming_job.pt, lotStatus=due
@@ -689,7 +689,8 @@ class PMSSim(object):
                 actionFlag = False
                 incoming_job = self.get_candidate(to_type, reserveFlag=True)
             else:
-                action_list = self.logic_get_action('ssu list')
+                # action_list = self.logic_get_action('ssu list')
+                action_list = self.logic_get_action('seq needs list', force_reserve=True)
 
                 if len(self.plan) < util.M:
                     """setup minimization control for last bucket"""
@@ -777,7 +778,8 @@ class PMSSim(object):
             # return False
         if 'seq' in pol:  # 연속 생산 제약
             if self.recent_job.type in remaining_job_type:
-                return self.recent_job.type
+                if 'list' in pol: return [self.recent_job.type]
+                else: return self.recent_job.type
 
         if 'ssu' in pol:
             #Shortest SetUp time
