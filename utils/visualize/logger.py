@@ -3,14 +3,14 @@ from copy import copy
 import json
 import env.util_sim as util
 
-
 class log_decision(object):
     def __init__(self, idx, job_id, job_type, job_due, res_id, res_type, decision_time, time_setup, time_proc, reward
-                 ,action_vector=None, predicted_Q=None):
+                 ,job_arrival=None, action_vector=None, predicted_Q=None):
         self.idx =idx
         self.job_id=job_id
         self.job_type=job_type
         self.job_due=job_due
+        self.job_arrival = job_arrival
         self.res_id=res_id
         self.res_type=res_type
         self.decision_time=decision_time
@@ -66,10 +66,31 @@ class instance_log(object):
         result = raw_time * 1000 * 60/util.TimeUnit - 32400000
         return result
 
-    def fileWrite(self, simul_iter, viewer_key=None):
+    def ganttWrite(self, img_path=None):
+        f = open(self.filepath + '_' + 'gantt.csv', 'a')
+        msg = "jobID,job_due,job_type,resId,res_setup,time,time_proc,time_setup\n"
+        for dec in self.decision_list:
+            msg += '{},{},{},{},{},{},{},{}'.format(dec.job_id,
+                                                    dec.job_due,
+                                                    dec.job_type,
+                                                    dec.res_id,
+                                                    dec.res_type,
+                                                    dec.decision_time,
+                                                    dec.time_proc,
+                                                    dec.time_setup)
+            msg += '\n'
+        f.write(msg)
+        f.close()
+        if img_path is not None:
+            from utils.visualize.gantt_plot import formulate_gantt_dicts, gantt_chart_plot
+            dict1, dict2 = formulate_gantt_dicts(self.decision_list)
+            gantt_chart_plot(dict1, dict2, path=img_path)
+
+    def fileWrite(self, simul_iter, viewer_key=''):
         if len(self.rts_info) == 0:
             return
-        f = open(self.filepath+'.csv', 'a')
+        if viewer_key != '': viewer_key = '_'+viewer_key
+        f = open(self.filepath+viewer_key+'.csv', 'a')
         msg = ""
         keylist = sorted(set(self.key_list))
         for row in range(len(self.rts_info)+1):
