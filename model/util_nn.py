@@ -1,13 +1,15 @@
-import tensorflow as tf
 import os
 import numpy as np
 import math
-from tensorflow.contrib.layers.python.layers import initializers
+import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
+# from tf.contrib.layers.python.layers import initializers
 from config import args
 is_train = tf.constant(args.is_train)
 
 def dense_layer(x, output_dim, scope,
-                weights_initializer=initializers.xavier_initializer(),
+                weights_initializer=tf.compat.v1.keras.initializers.glorot_normal(),#tf.contrib.layers.initializers.xavier_initializer() in tf1.x
                 biases_initializer=tf.zeros_initializer,
                 use_bias=True, activation_fn=None):
     """
