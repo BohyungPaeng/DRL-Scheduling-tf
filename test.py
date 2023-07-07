@@ -1,5 +1,7 @@
 import argparse, datetime, os, sys, csv
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
+tf.disable_eager_execution()
 import numpy as np
 from collections import defaultdict
 
@@ -12,9 +14,11 @@ from utils.visualize.logger import instance_log
 if args.viz:
     from utils.visualize.viz_state import VizState
     viz = VizState(file_path=args.summary_dir,
-                   colormap=[ list(range(12)), list(range(12,20)) ],
-                   imshow=True)
-                   # colormap=[[0, 1], list(range(2, 7)), list(range(7, 15)), list(range(15,19)), [19,20,21], list(range(22,40))])
+                   # colormap=[ list(range(12)), list(range(12,20)) ],
+                   #  colormap = [ list(range(21)), list(range(21,37)), list(range(37,44)), list(range(44,46)), list(range(46,53)), list(range(53,56))]
+                   # imshow=True,
+                   # colormap=[[0, 1], list(range(2, 7)), list(range(7, 15)), list(range(15,19)), [19,20,21], list(range(22,40))]
+    )
 
 class TestRecord(object):
     def __init__(self, save_dir='C:/results', filename='test_performance', format = 'csv'):
@@ -194,12 +198,15 @@ def test_logic(config: str):
 
         # record.fileWrite(logic, 'viewer')
 
+def viz_factory(task='tsne'):
+    if task == 'tsne': viz.tsne()
+
 def test_online(agentObj, env, episode, showFlag=False):
     args.is_train = False
     # env = SimEnvSim(agentObj.record)
 
     agentObj.SetEpisode(episode)
-    if args.viz: viz.new_episode()
+    if args.viz: viz.new_episode(episode)
     ST_TIME = datetime.datetime.now()
 
     env.reset()
@@ -211,13 +218,13 @@ def test_online(agentObj, env, episode, showFlag=False):
         act_vec = np.zeros([1, args.action_dim])
         act_vec[0, action] = 1
         # interact with environment
-        if args.bucket == 0 or (isinstance(env, TDSim) and 'learner_decision_' in DARTSPolicy):
+        if args.bucket == 0:
             observe, reward, done = env.step(action)
         else:
             observe, reward, done = env.step_bucket(action)
         if args.viz:
             if type(args.state_dim) is int or len(args.state_dim)<=2:
-                viz.viz_img_2d(state['state'], prod=args.action_dim)
+                viz.viz_img_2d(state, prod=args.action_dim)
             else:
                 viz.viz_img_3d(state['state'])
         # agentObj.remember(state, act_vec, observe, reward, done)
@@ -227,7 +234,7 @@ def test_online(agentObj, env, episode, showFlag=False):
         args.is_train = True
         if isinstance(env, PMSSim):
             return env.get_mean_tardiness(env.get_tardiness_hour(agentObj.reward_total))
-        elif isinstance(env, TDSim):
+        else: #FJSSP environment, deprecated
             return agentObj.reward_total
     elapsed_time = (datetime.datetime.now() - ST_TIME).total_seconds()
 
@@ -235,7 +242,8 @@ def test_online(agentObj, env, episode, showFlag=False):
     else: performance = get_performance_pkg(episode, agentObj, env, elapsed_time)
     # L_avg = 0
     # if len(agentObj.loss_history) > 0: L_avg = np.mean(agentObj.loss_history)
-    agentObj.record.fileWrite(episode, 'test_viewer')
+    '''remove the file name key to ensure that instance_log file_path is unique (230601) '''
+    agentObj.record.fileWrite(episode)#, 'test_viewer')
     kpi = agentObj.record.get_KPI()
     # util=kpi.get_util();
     # cmax_str = '%02dday %dmin' % (kpi.get_makespan() // (24 * 60), (kpi.get_makespan() % (24 * 60)))
@@ -279,6 +287,7 @@ def test_online(agentObj, env, episode, showFlag=False):
     return performance
 
 def test_procedure(tf_config, key=None, best_model_idx=None):
+    import tensorflow.compat.v1 as tf
     MAX_EPISODE = 1
     episode = 0
     args.is_train = False
@@ -366,7 +375,7 @@ def test_procedure(tf_config, key=None, best_model_idx=None):
                             env.set_random_seed(config_load)
                         else:
                             env = PMSSim(config_load=config_load, log=agentObj.record)
-                    elif args.env == 'pkg':
+                    elif args.env == 'pkg': #FJSSP environment, deprecated
                         from utils.problemIO.problem_reader import ProblemReaderDB
                         pr = ProblemReaderDB("problemSet_PCG_darts_bh")
                         pi = pr.generateProblem(1, False)
@@ -382,7 +391,7 @@ def test_procedure(tf_config, key=None, best_model_idx=None):
                         act_vec = np.zeros([1, args.action_dim])
                         act_vec[0, action] = 1
                         # interact with environment
-                        if args.bucket == 0 or (isinstance(env, TDSim) and 'learner_decision_' in DARTSPolicy):
+                        if args.bucket == 0:
                             observe, reward, done = env.step(action)
                         else:
                             observe, reward, done = env.step_bucket(action)
@@ -396,7 +405,9 @@ def test_procedure(tf_config, key=None, best_model_idx=None):
                         performance = get_performance_pkg(episode, agentObj, env, elapsed_time)
                     rslt.add_performance(column=config_load, value=performance[6])
                     agentObj.writeSummary()
-                    if True:  agentObj.record.fileWrite(episode, 'viewer')
+                    if True:
+                        agentObj.record.fileWrite(episode, 'viewer')
+                        agentObj.record.ganttWrite()
                 print('average elapsed time: ', elapsed_total / len(config_list))
                 rslt.summary_performance()
             if best_model_idx is None:
@@ -487,7 +498,7 @@ def test_model_multiprocesser(tf_config, key=None):
                             env.set_random_seed(config_load)
                         else:
                             env = PMSSim(config_load=config_load, log=agentObj.record)
-                    elif args.env == 'pkg':
+                    elif args.env == 'pkg': #FJSSP environment, deprecated
                         from utils.problemIO.problem_reader import ProblemReaderDB
                         pr = ProblemReaderDB("problemSet_PCG_darts_bh")
                         pi = pr.generateProblem(1, False)
@@ -504,7 +515,7 @@ def test_model_multiprocesser(tf_config, key=None):
                         act_vec[0, action] = 1
                         # interact with environment
 
-                        if args.bucket == 0 or (isinstance(env, TDSim) and 'learner_decision_' in DARTSPolicy):
+                        if args.bucket == 0:
                             observe, reward, done = env.step(action)
                         else:
                             observe, reward, done = env.step_bucket(action)
@@ -559,7 +570,7 @@ def test_model_singleprocesser(idx: int, tf_config=None, config_load=None):
                 rslt.add_performance('models','singleTDS_{}'.format(str(model_file_name)))
             if args.env == 'pms':
                 env = PMSSim(config_load=config_load, log=agentObj.record)
-            elif args.env == 'pkg':
+            elif args.env == 'pkg': #FJSSP environment, deprecated
                 from utils.problemIO.problem_reader import ProblemReaderDB
                 from main_pkg import set_problem
                 pr = ProblemReaderDB("problemSet_darts_bh")
@@ -628,6 +639,7 @@ if __name__ == "__main__":
     device_count{} opt still doesn't work
     'GPU':0 has same effect with 'CUDA_V...':-1 
     """
+    import tensorflow.compat.v1 as tf
     gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.333, allow_growth=True)
     tf_config = tf.ConfigProto(device_count={'GPU': 0}, gpu_options=gpu_options)
     # with tf.device('/cpu:0'):
@@ -662,7 +674,7 @@ if __name__ == "__main__":
         #     test_model_multiprocesser(tf_config=tf_config, key=key)
         test_model_multiprocesser(tf_config=tf_config)
     elif args.test_mode == 'manual':
-        test_procedure(tf_config)
+        test_procedure(tf_config, best_model_idx=4)
     elif args.test_mode == 'ig':
         from IG import run_env, read_sequence
         import copy
