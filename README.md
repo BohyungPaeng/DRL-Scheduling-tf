@@ -4,6 +4,8 @@ Distributed version of Deep Reinforcement Learning (DRL)-based scheduling agents
 
 Codes are implemented by python 3.6, tensorflow 1.14
 
+(2023.07) new branch tf2-compatible is available!! python 3.10 & tensorflow 2.x was also tested w/o errors
+
 When using this repository for academic purposes,
 please cites our paper "Deep Reinforcement Learning for Minimizing Tardiness in Parallel Machine Scheduling With Sequence Dependent Family Setups", IEEE Access (2021)
 
